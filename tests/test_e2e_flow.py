@@ -2,12 +2,13 @@ from pathlib import Path
 
 from playwright.sync_api import Page, expect
 
-from config.config import BASE_URL, PASSWORD, USERNAME
+from config.config import BASE_URL, PASSWORD, SAUCE_USERNAME
+from utils.logger import logger
 
 
 def test_e2e_flow(page: Page, tmp_path: Path):
     page.goto(BASE_URL)
-    page.fill('input[data-test="username"]', USERNAME)
+    page.fill('input[data-test="username"]', SAUCE_USERNAME)
     page.fill('input[data-test="password"]', PASSWORD)
     page.click('input[data-test="login-button"]')
     page.wait_for_selector("div.inventory_item")
@@ -15,14 +16,15 @@ def test_e2e_flow(page: Page, tmp_path: Path):
     try:
         for item in invetory_list:
             name = item.locator("div.inventory_item_name").text_content()
-            price = item.locator("div.inventory_item_price").text_content()
             item.get_by_text("Add to cart", exact=True).click()
+            logger.info("Product added to cart 🛒 %s", name)
     except Exception as e:
         print(f"An error occurred: {e}")
 
     expect(page.locator("span.shopping_cart_badge")).to_have_text("6")
     page.locator("a.shopping_cart_link").click()
-    page.wait_for_timeout(7000)
+
+    # Checkout Page Code
     page.get_by_role("button", name="Checkout").click()
     page.locator("#first-name").fill("Test")
     page.locator("#last-name").fill("User")

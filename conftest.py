@@ -76,12 +76,12 @@ def traced_context(pw_browser, request):
 
             try:
                 context.tracing.stop(path=trace_path)
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.exception("Failed to stop tracing")
 
             try:
                 context.close()
-            except Exception:
+            except Exception:  # noqa: BLE001
                 logger.exception("Failed to close browser context")
 
             if not failed:
@@ -89,7 +89,7 @@ def traced_context(pw_browser, request):
                     try:
                         if page.video:
                             page.video.delete()
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         logger.exception("Failed to delete recorded video")
 
 

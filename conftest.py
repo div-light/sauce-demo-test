@@ -1,5 +1,6 @@
 import re
 import shutil
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -39,24 +40,24 @@ def pytest_runtest_makereport(item, call):
             logger.info("Screenshot is saved %s", shot_path)
 
 
+@contextmanager
+def _ignore_errors(msg):
+    try:
+        yield
+    except Exception:  # noqa: BLE001
+        logger.exception(msg)
+
+
 @pytest.fixture
 def traced_context(pw_browser, request):
-    context = None
-    pages = []
+    video_dir = ARTIFACTS / "videos"
+    video_dir.mkdir(parents=True, exist_ok=True)
+
+    context = pw_browser.new_context(record_video_dir=video_dir)
+    context.tracing.start(screenshots=True, snapshots=True, sources=True)
 
     try:
-        video_dir = ARTIFACTS / "videos"
-        video_dir.mkdir(parents=True, exist_ok=True)
-
-        context = pw_browser.new_context(record_video_dir=video_dir)
-        context.tracing.start(
-            screenshots=True,
-            snapshots=True,
-            sources=True,
-        )
-
         yield context
-
     finally:
         failed = any(
             getattr(request.node, f"rep_{phase}", None)
@@ -64,33 +65,24 @@ def traced_context(pw_browser, request):
             for phase in ("setup", "call")
         )
 
-        if context is not None:
-            pages = context.pages
+        pages = context.pages
+        trace_path = None
+        if failed:
+            trace_dir = ARTIFACTS / "traces"
+            trace_dir.mkdir(parents=True, exist_ok=True)
+            trace_path = trace_dir / f"{_save(request.node.nodeid)}.zip"
 
-            if failed:
-                trace_dir = ARTIFACTS / "traces"
-                trace_dir.mkdir(parents=True, exist_ok=True)
-                trace_path = trace_dir / f"{_save(request.node.nodeid)}.zip"
-            else:
-                trace_path = None
+        with _ignore_errors("Failed to stop tracing"):
+            context.tracing.stop(path=trace_path)
 
-            try:
-                context.tracing.stop(path=trace_path)
-            except Exception:  # noqa: BLE001
-                logger.exception("Failed to stop tracing")
+        with _ignore_errors("Failed to close browser context"):
+            context.close()
 
-            try:
-                context.close()
-            except Exception:  # noqa: BLE001
-                logger.exception("Failed to close browser context")
-
-            if not failed:
-                for page in pages:
-                    try:
-                        if page.video:
-                            page.video.delete()
-                    except Exception:  # noqa: BLE001
-                        logger.exception("Failed to delete recorded video")
+        if not failed:
+            for page in pages:
+                if page.video:
+                    with _ignore_errors("Failed to delete recorded video"):
+                        page.video.delete()
 
 
 @pytest.fixture(scope="session")
